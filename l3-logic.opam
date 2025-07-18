@@ -1,0 +1,15 @@
+opam-version: "2.0"
+name: "l3-logic"
+license: "BSD-3-Clause"
+authors: "Zack Eisbach"
+maintainer: "Zack Eisbach"
+synopsis: "Mechanized program logic and logical relations for L3"
+
+depends: [
+  "coq" { (>= "8.19" & < "9.1~") | (= "dev") }
+  "coq-iris" { (= "dev.2025-07-17.3.adf6beba") | (= "dev") }
+  "coq-autosubst" { (= "1.9") | (= "dev") }
+]
+
+build: [make "-j%{jobs}%"]
+install: [make "install"]
