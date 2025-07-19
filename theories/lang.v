@@ -103,7 +103,9 @@ Proof. intros ??. congruence. Qed.
 
 (* May need EqDecision instances for expr and val *)
 
-(* Step 3: define semantics *)
+(* Step 3: define small-step base reductions *)
+(* this will involve defining your machine configuration,
+   as well as substitution *)
 
 (* SimpLang suggests that we wrap this, so I am! *)
 Record store : Type := {
@@ -125,6 +127,7 @@ Global Arguments state_upd_heap _ !_ /.
 
 Fixpoint subst_val (x : string) (v : val) (e : expr) :=
   match e with
+  (* values are always closed *)
   | Val _ => e
   | LetUnit e1 e2 => LetUnit (subst_val x v e1) (subst_val x v e2)
   | Pair e1 e2 => Pair (subst_val x v e1) (subst_val x v e2)
@@ -158,8 +161,30 @@ Definition subst_val' (mx : binder) (v : val) : expr → expr :=
 
 (* we also have to be able to substitute away location variables,
    which we use the Autosubst machinery for! *)
+(* https://www.ps.uni-saarland.de/autosubst/doc/Ssr.SystemF_SN.html *)
 
+(* First, substitute into loc *)
+Instance Ids_loc : Ids loc. derive. Defined.
+Instance Rename_loc : Rename loc. derive. Defined.
+Instance Subst_loc : Subst loc. derive. Defined.
 
+(* we need to be able to perform this same substitution into 
+   both expressions and values *)
+
+(* This will not substitute into the exprs inside of val, though. 
+   This _should_ be okay, for the same reason why it is okay for
+   variable substitution: values will be closed *)
+(* BUT, if it turns out that this is broken, the solution will be
+   to have two separate, non-mutually-recursive definitions,
+   as in the Semantics lecture notes. *)
+(* I have already gotten started with this setup, but I might
+   have to revisit this and redo things with the other setup. *)
+Instance HSubst_val : HSubst loc val. derive. Defined.
+(* Since Hsubst_val was defined first, this should descend and
+   substitute in the val case. Not sure if needed (or right)... *)
+Instance HSubst_expr : HSubst loc expr. derive. Defined.
+
+   
 Inductive base_step : store * expr → store * expr → Prop :=
   | SLetUnit σ e :
     base_step (σ, LetUnit (Val UnitV) e) (σ, e)
@@ -201,10 +226,14 @@ Inductive base_step : store * expr → store * expr → Prop :=
               (state_upd_heap <[l := v2]> σ, Val $ PairV CapV v1)
   | SLocLam σ e :
     base_step (σ, LocLam e) (σ, Val $ LocLamV e)
-  (* app lam goes here *)
+  | SLocApp σ e l e' :
+    e' = e.|[LocConst l/] →
+    base_step (σ, LocApp (Val $ LocLamV e) $ LocConst l) (σ, e')
   | SLocPack σ η e :
     base_step (σ, LocPack η e) (σ, Val $ LocPackV η e)
-  (* pack unpack goes here *)
+  | SLUnpack σ x l v (e e' : expr) :
+    e' = e.|[LocConst l/] →
+    base_step (σ, LocUnpack x (Val $ LocPackV (LocConst l) $ Val v) e) (σ, e')
 .
 
 
