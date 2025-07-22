@@ -110,7 +110,6 @@ Proof. intros ??. congruence. Qed.
    as well as substitution *)
 
 (* SimpLang suggests that we wrap this, so I am! *)
-(* If more lemmas are needed, I should move it to a different file *)
 Record store : Type := {
   heap: gmap loclit val;
 }.
@@ -350,7 +349,9 @@ Module l3_iris_wrap.
   Qed.
 End l3_iris_wrap.
 
-Canonical Structure l3_ectxi_lang := EctxiLanguage l3_iris_wrap.l3_lang_mixin.
+End l3_lang.
+
+Canonical Structure l3_ectxi_lang := EctxiLanguage l3_lang.l3_iris_wrap.l3_lang_mixin.
 Canonical Structure l3_ectx_lang := EctxLanguageOfEctxi l3_ectxi_lang.
 Canonical Structure l3_lang := LanguageOfEctx l3_ectx_lang.
 
@@ -358,4 +359,5 @@ Canonical Structure l3_lang := LanguageOfEctx l3_ectx_lang.
    though they do have a bit of Iris-y stuff around it... *)
 (* see also relations for nsteps, rtc, etc *)
 
-End l3_lang.
+
+Export l3_lang.

@@ -9,3 +9,4 @@
 # files go here
 theories/lang.v
 theories/loclit.v
+theories/heapprop.v
