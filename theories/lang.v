@@ -2,6 +2,7 @@ From stdpp Require Export binders strings.
 From l3 Require Export loclit.
 From Autosubst Require Export Autosubst.
 From iris.proofmode Require Import proofmode.
+From iris.program_logic Require Export language ectx_language ectxi_language.
 
 Declare Scope expr_scope.
 Declare Scope val_scope.
@@ -26,6 +27,7 @@ Inductive loc :=
   | LocConst (l : loclit)
 .
 
+(* TODO: better notation? *)
 Inductive expr :=
   (* Lets us include values directly, even with some redundancy.
      Expression versions of values step to Val, just like in HeapLang *)
@@ -67,7 +69,7 @@ with val :=
   | PtrV (l : loclit)
   | CapV : val
   | LocLamV (e : {bind loc in expr})
-  | LocPackV (η : loc) (e : expr)
+  | LocPackV (η : loc) (v : val)
 .
 
 Bind Scope expr_scope with expr.
@@ -215,12 +217,12 @@ Inductive base_step : store * expr → store * expr → Prop :=
       (state_upd_heap <[l := v]> σ, 
        (* ⌜l, (cap, !ptr v)⌝, plus awkward val wrapping *)
        (* TODO: maybe the val wrapping is a little wrong here?? *)
-       Val $ LocPackV (LocConst l) $ Val $ PairV CapV $ BangV $ PtrV l)
+       Val $ LocPackV (LocConst l) $ PairV CapV $ BangV $ PtrV l)
   | SFree σ l v :
     σ.(heap) !! l = Some v →
     base_step 
-      (σ, Free $ Val $ LocPackV (LocConst l) $ Val $ PairV CapV $ BangV $ PtrV l)
-      (state_upd_heap (delete l) σ, Val $ LocPackV (LocConst l) $ Val v)
+      (σ, Free $ Val $ LocPackV (LocConst l) $ PairV CapV $ BangV $ PtrV l)
+      (state_upd_heap (delete l) σ, Val $ LocPackV (LocConst l) v)
   | SSwap σ l v1 v2 :
     σ.(heap) !! l = Some v1 →
     base_step (σ, Swap (Val CapV) (Val $ PtrV l) (Val v2))
@@ -230,12 +232,130 @@ Inductive base_step : store * expr → store * expr → Prop :=
   | SLocApp σ e l e' :
     e' = e.|[LocConst l/] →
     base_step (σ, LocApp (Val $ LocLamV e) $ LocConst l) (σ, e')
-  | SLocPack σ η e :
-    base_step (σ, LocPack η e) (σ, Val $ LocPackV η e)
+  | SLocPack σ η v :
+    base_step (σ, LocPack η $ Val v) (σ, Val $ LocPackV η v)
   | SLUnpack σ x l v (e e' : expr) :
     e' = e.|[LocConst l/] →
-    base_step (σ, LocUnpack x (Val $ LocPackV (LocConst l) $ Val v) e) (σ, e')
+    base_step (σ, LocUnpack x (Val $ LocPackV (LocConst l) v) e) (σ, e')
 .
 
+
+(* We also must lift head reduction to reduction-in-context *)
+
+(* We define this in the more Iris-y way, which is to define just the individual
+   items of the evaluation context, not the whole context grammar itself.
+   This means we don't have an empty context, nor do we take contexts in variants.
+   The more standard interface (EctxLanguage) is obtained by considering lists
+   of evaluation contexts, where the empty list is the empty context.
+   This appears to require establishing fewer lemmas. *)
+(* In other words, write down the grammar without the E itself, or the empty context. *)
+(* As an example, the expression ((e1, e2), e3) usually gets decomposed with
+    E = (([], e2), e3), then plugged as E[e1]
+   But here, it would be decomposed as two PairLCtx in a list.
+   From this, we automatically get that plugging commutes with composing. *)
+Inductive ectx_item :=
+  | LetUnitCtx (e2 : expr)
+  | PairLCtx (e2 : expr)
+  | PairRCtx (v1 : val)
+  | LetPairCtx (x1 x2 : binder) (e2 : expr)
+  | AppLCtx (e2 : expr)
+  | AppRCtx (v1 : val)
+  | LetBangCtx (x : binder) (e2 : expr)
+  | DupCtx
+  | DrpCtx
+  | NewCtx
+  | FreeCtx
+  | SwapLCtx (e2 e3 : expr)
+  | SwapMCtx (v1 : val) (e3 : expr)
+  | SwapRCtx (v1 v2 : val)
+  (* Following L3, these are location constants *)
+  | LocAppCtx (l : loclit)
+  | LocPackCtx (l : loclit)
+  | LocUnpackCtx (x : binder) (e2 : {bind loc in expr})
+.
+
+Definition fill_item (Ei : ectx_item) (e : expr) : expr :=
+  match Ei with
+  | LetUnitCtx e2 => LetUnit e e2
+  | PairLCtx e2 => Pair e e2
+  (* of_val is just Val, but I am defining it this way for modularity *)
+  | PairRCtx v1 => Pair (of_val v1) e
+  | LetPairCtx x1 x2 e2 => LetPair x1 x2 e e2
+  | AppLCtx e2 => App e e2
+  | AppRCtx v1 => App (of_val v1) e
+  | LetBangCtx x e2 => LetBang x e e2
+  | DupCtx => Dup e
+  | DrpCtx => Drp e
+  | NewCtx => New e
+  | FreeCtx => Free e
+  | SwapLCtx e2 e3 => Swap e e2 e3
+  | SwapMCtx v1 e3 => Swap (of_val v1) e e3
+  | SwapRCtx v1 v2 => Swap (of_val v1) (of_val v2) e
+  | LocAppCtx l => LocApp e $ LocConst l
+  | LocPackCtx l => LocPack (LocConst l) e
+  | LocUnpackCtx x e2 => LocUnpack x e e2
+  end.
+
+(* The following typeclass instances and lemmas are necessary to use EctxiLanguageMixin,
+   just adapted to have fewer arguments since the definitions above have less Iris noise *)
+(* The proofs are just as in the SimpLang instantiation / Semantics notes. *)
+(* This probably isn't necessary for the project, but good practice to instantiate *)
+
+(* Not quite a lemma about contexts, but still needed *)
+Lemma val_base_stuck σ1 e1 σ2 e2 : base_step (σ1, e1) (σ2, e2) → to_val e1 = None.
+Proof. inversion 1; naive_solver. Qed.
+
+Lemma fill_item_val Ei e :
+  is_Some (to_val (fill_item Ei e)) → is_Some (to_val e).
+Proof. intros [v ?]. destruct Ei; simplify_option_eq; eauto. Qed.
+
+Global Instance fill_item_inj Ei : Inj (=) (=) (fill_item Ei).
+Proof. destruct Ei; intros ???; simplify_eq/=; auto with f_equal. Qed.
+
+Lemma fill_item_no_val_inj Ei1 Ei2 e1 e2 :
+  to_val e1 = None → to_val e2 = None →
+  fill_item Ei1 e1 = fill_item Ei2 e2 → Ei1 = Ei2.
+Proof. destruct Ei1, Ei2; naive_solver eauto with f_equal. Qed.
+
+Lemma base_ctx_step_val Ei σ1 e σ2 e2 :
+  base_step (σ1, (fill_item Ei e)) (σ2, e2) → is_Some (to_val e).
+Proof. destruct Ei; inversion_clear 1; simplify_option_eq; eauto. Qed.
+
+(* I don't know how useful this is... *)
+Module l3_iris_wrap.
+  (* I tried to define the language above without extra Iris noise.
+     However, this means instantiating is a little more annoying. *)
+  
+  (* As in SimpLang, observations are just an empty inductive *)
+  Inductive observation :=.
+  Lemma observations_empty (κs: list observation) : κs = [].
+  Proof. by destruct κs as [ | [] ]. Qed.
+
+  (* Iris expects this signature *)
+  Definition base_step' (e1 : expr) (σ1 : store) (κ : list observation)
+                        (e2 : expr) (σ2 : store) (efs : list expr) : Prop :=
+    efs = [] ∧ base_step (σ1, e1) (σ2, e2).
+
+  Lemma val_base_stuck' e1 σ1 κ e2 σ2 efs : base_step' e1 σ1 κ e2 σ2 efs → to_val e1 = None.
+  Proof. unfold base_step'; intros [? ?]; eauto using val_base_stuck. Qed.
+
+  Lemma base_ctx_step_val' Ei e σ1 κ e2 σ2 efs :
+    base_step' (fill_item Ei e) σ1 κ e2 σ2 efs → is_Some (to_val e).
+  Proof. unfold base_step'; intros [? ?]; eauto using base_ctx_step_val. Qed.
+
+  Lemma l3_lang_mixin : EctxiLanguageMixin of_val to_val fill_item base_step'.
+  Proof.
+    split; apply _ || eauto using to_of_val, of_to_val, val_base_stuck',
+      fill_item_val, fill_item_no_val_inj, base_ctx_step_val'.
+  Qed.
+End l3_iris_wrap.
+
+Canonical Structure l3_ectxi_lang := EctxiLanguage l3_iris_wrap.l3_lang_mixin.
+Canonical Structure l3_ectx_lang := EctxLanguageOfEctxi l3_ectxi_lang.
+Canonical Structure l3_lang := LanguageOfEctx l3_ectx_lang.
+
+(* this defines lots of things like step, cfg, etc,
+   though they do have a bit of Iris-y stuff around it... *)
+(* see also relations for nsteps, rtc, etc *)
 
 End l3_lang.
