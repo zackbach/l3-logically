@@ -13,14 +13,12 @@ Module LocLit.
   Lemma eq_spec l1 l2 : l1 = l2 ↔ loc_car l1 = loc_car l2.
   Proof. destruct l1, l2; naive_solver. Qed.
 
-  Global Instance eq_dec : EqDecision loclit.
-  Proof. solve_decision. Defined.
-
   Global Instance loclit_eq_decision : EqDecision loclit.
   Proof. solve_decision. Defined.
 
   Global Instance loclit_inhabited : Inhabited loclit := populate {|loc_car := 0 |}.
 
+  (* Must be Countable to use as keys of a gmap *)
   Global Instance loc_countable : Countable loclit.
   Proof. by apply (inj_countable' loc_car LocLit); intros []. Defined.
 

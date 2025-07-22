@@ -108,6 +108,7 @@ Proof. intros ??. congruence. Qed.
    as well as substitution *)
 
 (* SimpLang suggests that we wrap this, so I am! *)
+(* If more lemmas are needed, I should move it to a different file *)
 Record store : Type := {
   heap: gmap loclit val;
 }.
