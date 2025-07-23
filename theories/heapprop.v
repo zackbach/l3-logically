@@ -1,7 +1,7 @@
 (* https://gitlab.mpi-sws.org/iris/iris/-/blob/master/tests/heapprop.v *)
 
 From stdpp Require Import gmap.
-From iris.bi Require Import interface.
+From iris.bi Require Import interface derived_laws notation.
 From iris.proofmode Require Import tactics.
 From iris.prelude Require Import options.
 From l3 Require Export lang.
@@ -200,7 +200,7 @@ Section mixins.
     eapply bi_persistently_mixin_discrete, heapProp_bi_mixin; [done|..].
     - (* [(emp ⊢ ∃ x, Φ x) → ∃ x, emp ⊢ Φ x] *)
       unseal. intros A Φ [H]. destruct (H ∅) as [x ?]; [done|].
-      exists x. by split=> σ ->.
+      exists x. by split => σ ->.
     - by rewrite heapProp_persistently_unseal.
   Qed.
 
@@ -220,3 +220,14 @@ Canonical Structure heapPropI : bi :=
 
 Global Instance heapProp_pure_forall : BiPureForall heapPropI.
 Proof. intros A φ. rewrite /bi_forall /bi_pure /=. unseal. by split. Qed.
+
+(* The other direction always holds; this direction doesn't in general. *)
+Lemma affinely_intuitionistically (P : heapProp) : <affine> P ⊢ □ P.
+Proof.
+  rewrite /bi_intuitionistically /bi_affinely.
+  apply bi.and_intro; auto.
+  rewrite /bi_emp /bi_and /bi_entails /bi_persistently /=; unseal.
+  split=> σ [Hemp HP]. unfold heapProp_persistently_def; unseal.
+  (* I don't know why I couldn't get simpl to automatically do these *)
+  split=> σ' Hσ'. assert (σ = ∅) =>//. assert (σ' = ∅) =>//. by subst.
+Qed.
