@@ -1,10 +1,10 @@
 (* https://gitlab.mpi-sws.org/iris/iris/-/blob/master/tests/heapprop.v *)
 
 From stdpp Require Import gmap.
-From iris.bi Require Import interface derived_laws notation.
+From iris.bi Require Import interface derived_laws.
 From iris.proofmode Require Import tactics.
 From iris.prelude Require Import options.
-From l3 Require Export lang.
+From l3 Require Import lang.
 
 Record heapProp := HeapProp {
   heapProp_holds :> gmap loclit val → Prop;

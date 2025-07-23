@@ -359,5 +359,7 @@ Canonical Structure l3_lang := LanguageOfEctx l3_ectx_lang.
    though they do have a bit of Iris-y stuff around it... *)
 (* see also relations for nsteps, rtc, etc *)
 
+Check (@step l3_lang).
+Eval compute in cfg l3_lang.
 
 Export l3_lang.
